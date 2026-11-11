@@ -45,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedButton
@@ -56,6 +57,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,6 +89,8 @@ import java.util.Date
 fun HomeworkApp(viewModel: AppViewModel, chooseFolder: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // Non-null while the "re-upload this file?" dialog is shown.
+    var pendingConfirm by remember { mutableStateOf<HomeworkFile?>(null) }
     // Let the IME consume Back first. Back from optional settings returns home, retaining the draft.
     BackHandler(enabled = state.aboutOpen) { viewModel.closeAbout() }
     BackHandler(enabled = state.settingsOpen && state.configured && !state.saving) {
@@ -110,12 +116,35 @@ fun HomeworkApp(viewModel: AppViewModel, chooseFolder: () -> Unit) {
         editToken = viewModel::editToken,
         health = viewModel::health,
         refresh = viewModel::scan,
-        upload = viewModel::upload,
+        upload = { file ->
+            if (file.isUploaded) pendingConfirm = file else viewModel.upload(file)
+        },
         cancel = viewModel::cancelRequest,
         resume = viewModel::resumeTask,
         togglePrerelease = viewModel::togglePrerelease,
         toggleProxy = viewModel::toggleProxy,
     )
+    pendingConfirm?.let { file ->
+        AlertDialog(
+            onDismissRequest = { pendingConfirm = null },
+            icon = { AppIcon(R.drawable.ic_upload, null) },
+            title = { Text("重复上传") },
+            text = {
+                Text("「${file.name}」已经上传过，重复上传会再次触发服务端 AI 分析与班级群推送。确定要再次上传吗？")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingConfirm = null
+                        viewModel.upload(file)
+                    },
+                ) { Text("仍要上传") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingConfirm = null }) { Text("取消") }
+            },
+        )
+    }
 }
 
 /** Pure UI shared by the runtime and previews; no ViewModel, picker or network in previews. */
@@ -352,11 +381,13 @@ private fun HomeworkCard(file: HomeworkFile, busy: Boolean, canUpload: Boolean, 
             Button(
                 onClick = upload,
                 enabled = canUpload,
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = "上传并处理 ${file.name}" },
+                modifier = Modifier.fillMaxWidth().semantics {
+                    contentDescription = if (file.isUploaded) "重新上传 ${file.name}" else "上传并处理 ${file.name}"
+                },
             ) {
                 AppIcon(R.drawable.ic_upload, null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (busy) "处理中…" else "上传并处理")
+                Text(if (busy) "处理中…" else if (file.isUploaded) "重新上传" else "上传并处理")
             }
         }
     }

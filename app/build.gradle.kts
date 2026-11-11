@@ -15,10 +15,10 @@ android {
         applicationId = "com.etaris.astrahomework"
         minSdk = 28
         targetSdk = 37
-        versionCode = 4
-        // CI passes -Pci.buildNumber=N so debug builds report "1.3-ci.N"; local
-        // builds stay "1.3" and the in-app comparison treats them as the stable line.
-        val baseVersion = "1.3"
+        versionCode = 5
+        // CI passes -Pci.buildNumber=N so debug builds report "1.4-ci.N"; local
+        // builds stay "1.4" and the in-app comparison treats them as the stable line.
+        val baseVersion = "1.4"
         val ciBuild = providers.gradleProperty("ci.buildNumber").orNull
         versionName = if (ciBuild != null) "$baseVersion-ci.$ciBuild" else baseVersion
 
