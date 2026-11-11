@@ -26,12 +26,14 @@
 ```bash
 ./gradlew :app:testDebugUnitTest   # 单元测试
 ./gradlew :app:assembleDebug       # 调试包
-./gradlew :app:assembleRelease     # 正式包（本地为 debug 签名）
+./gradlew :app:assembleRelease     # 未签名正式包（无密钥时）
 ```
+
+没有签名密钥时 `assembleRelease` 产出标准的 `app-release-unsigned.apk`，可以验证混淆与优化结果，但不能安装发布。
 
 ### 发布签名
 
-正式发布由 GitHub Actions 完成，需要在仓库 Secrets 中配置：
+签名只在 `Release` 工作流中使用仓库 Secrets 完成，CI 从不持有密钥：
 
 | Secret | 说明 |
 | --- | --- |
@@ -40,19 +42,33 @@
 | `KEY_ALIAS` | 密钥别名 |
 | `KEY_PASSWORD` | 密钥密码 |
 
-未配置这些 Secrets 时，本地 `assembleRelease` 仍会使用 debug 签名，仅适合自用安装；`release.yml` 会拒绝在缺少 keystore 的情况下发布。
+四个变量需全部提供：本地只设置其中一部分会直接构建失败，而不会静默降级为 debug 签名。`release.yml` 在缺少任一 Secret 时会在构建前报错退出。
+
+生成 keystore 并在本地签名构建：
+
+```bash
+keytool -genkeypair -v -keystore release.keystore -alias astra \
+  -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 release.keystore   # 填入 KEYSTORE_BASE64
+
+export KEYSTORE_FILE=$PWD/release.keystore KEYSTORE_PASSWORD=... \
+       KEY_ALIAS=astra KEY_PASSWORD=...
+./gradlew :app:assembleRelease
+```
+
+`release.keystore` 已被 `.gitignore` 忽略；请离线备份，密钥丢失后已安装的用户无法升级到新版本。
 
 ### 发布流程
 
 1. 更新 `app/build.gradle.kts` 中的 `versionCode` 与 `versionName`。
 2. 提交并推送。
 3. 打标签并推送：`git tag v1.3 && git push origin v1.3`。
-4. `Release` 工作流会构建 APK，并以 `AstraHomework-<version>.apk` 附加到 GitHub Release。应用内的更新检查读取该 Release 的 `tag_name` 与 APK 资产。
+4. `Release` 工作流会校验签名证书、构建 APK，并以 `AstraHomework-<version>.apk` 附加到 GitHub Release。应用内的更新检查读取该 Release 的 `tag_name` 与 APK 资产。
 
 ## 工作流
 
-- `ci.yml`：在推送与 PR 上运行单元测试、Lint 和调试构建，并上传报告。
-- `release.yml`：在 `v*` 标签或手动触发时签名并发布 APK。
+- `ci.yml`（Build）：推送与 PR 时运行 Lint、单元测试，并构建 debug 与未签名 release 两种 APK；两者都作为 Artifacts 可供下载，同时上传测试与 Lint 报告。
+- `release.yml`（Release）：在 `v*` 标签或手动触发时使用 Secrets 签名，`apksigner` 验证证书后发布。
 
 ## 目录结构
 

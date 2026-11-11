@@ -33,12 +33,19 @@ android {
     }
 
     signingConfigs {
-        // CI release builds inject a keystore through environment secrets. Without
-        // them the release variant stays debug-signed so local builds keep working.
-        val keystore = System.getenv("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
-        if (keystore != null) {
+        // Signed releases happen only in the release workflow, which exports every
+        // value below from repository secrets. A partially configured keystore is a
+        // build error rather than a silently unsigned (or debug-signed) artifact.
+        val required = listOf(
+            "KEYSTORE_FILE", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD",
+        )
+        val present = required.filter { !System.getenv(it).isNullOrBlank() }
+        if (present.isNotEmpty()) {
+            check(present.size == required.size) {
+                "Incomplete release signing configuration: missing ${required - present.toSet()}"
+            }
             create("release") {
-                storeFile = file(keystore)
+                storeFile = file(System.getenv("KEYSTORE_FILE"))
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
@@ -48,11 +55,10 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (System.getenv("KEYSTORE_FILE").isNullOrBlank()) {
-                signingConfigs.getByName("debug")
-            } else {
-                signingConfigs.getByName("release")
-            }
+            // No signing config means AGP emits app-release-unsigned.apk, which is
+            // exactly what CI builds and what must never be published as a release.
+            signingConfig = signingConfigs.findByName("release")
+            isDebuggable = false
             optimization {
                 enable = true
                 keepRules {
