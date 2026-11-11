@@ -236,25 +236,63 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(aboutOpen = false, update = it.update.copy(checking = false)) }
     }
 
+    /** Toggles whether CI / pre-release builds are included in update checks. */
+    fun togglePrerelease(enabled: Boolean) {
+        // Update the in-memory settings first; the settings flow echoes the same
+        // values, so a later connection save can never revert the toggle.
+        _state.update {
+            it.copy(
+                settings = it.settings.copy(checkPrerelease = enabled),
+                draft = it.draft?.copy(checkPrerelease = enabled),
+                // Invalidate the last check so reopening About re-queries.
+                update = AboutUpdateState(),
+            )
+        }
+        viewModelScope.launch {
+            storage.saveUpdatePreferences(enabled, _state.value.settings.useProxy)
+        }
+    }
+
+    /** Toggles whether update checks are routed through gh-proxy.com. */
+    fun toggleProxy(enabled: Boolean) {
+        _state.update {
+            it.copy(
+                settings = it.settings.copy(useProxy = enabled),
+                draft = it.draft?.copy(useProxy = enabled),
+                update = AboutUpdateState(),
+            )
+        }
+        viewModelScope.launch {
+            storage.saveUpdatePreferences(_state.value.settings.checkPrerelease, enabled)
+        }
+    }
+
     /** Asks GitHub for the latest release; failures are shown inline, never thrown. */
     fun checkUpdate() {
         if (_state.value.update.checking) return
         updateJob?.cancel()
+        val settings = _state.value.settings
         _state.update { it.copy(update = it.update.copy(checking = true, error = null)) }
         updateJob = viewModelScope.launch {
-            val release = try {
-                updateChecker.latest()
+            val result = try {
+                if (settings.checkPrerelease) {
+                    updateChecker.prerelease(useProxy = settings.useProxy)
+                } else {
+                    updateChecker.stable(useProxy = settings.useProxy)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
-                null
+                UpdateCheckResult.Unreachable
             }
             _state.update {
                 it.copy(
                     update = AboutUpdateState(
                         checking = false,
-                        release = release,
-                        error = if (release == null) "暂时无法获取更新信息，请检查网络后重试" else null,
+                        release = (result as? UpdateCheckResult.NewRelease)?.info,
+                        // Only a failed request is an error; "no release yet" means up to date.
+                        error = if (result is UpdateCheckResult.Unreachable)
+                            "暂时无法获取更新信息，请检查网络后重试" else null,
                         checkedVersion = BuildConfig.VERSION_NAME,
                     ),
                 )

@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -37,6 +39,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Switch
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,6 +58,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -109,6 +113,8 @@ fun HomeworkApp(viewModel: AppViewModel, chooseFolder: () -> Unit) {
         upload = viewModel::upload,
         cancel = viewModel::cancelRequest,
         resume = viewModel::resumeTask,
+        togglePrerelease = viewModel::togglePrerelease,
+        toggleProxy = viewModel::toggleProxy,
     )
 }
 
@@ -132,6 +138,8 @@ private fun HomeworkContent(
     upload: (HomeworkFile) -> Unit = {},
     cancel: () -> Unit = {},
     resume: () -> Unit = {},
+    togglePrerelease: (Boolean) -> Unit = {},
+    toggleProxy: (Boolean) -> Unit = {},
 ) {
     val showingSettings = state.settingsOpen || !state.configured
     val focus = LocalFocusManager.current
@@ -168,12 +176,21 @@ private fun HomeworkContent(
                                 AppIcon(R.drawable.ic_refresh, "刷新 PDF 文件列表")
                             }
                         }
-                        if (!useRail && state.settingsLoaded) IconButton(
-                            onClick = {
-                                focus.clearFocus()
-                                if (state.aboutOpen) closeAbout() else openAbout()
-                            },
-                        ) { AppIcon(R.drawable.ic_info, "关于与更新") }
+                        if (!useRail && state.settingsLoaded) {
+                            if (!showingSettings || state.aboutOpen) {
+                                IconButton(
+                                    onClick = {
+                                        focus.clearFocus()
+                                        if (state.aboutOpen) closeAbout() else openAbout()
+                                    },
+                                ) { AppIcon(R.drawable.ic_info, "关于与更新") }
+                            }
+                            if (!showingSettings && !state.aboutOpen) {
+                                IconButton(onClick = openSettings, enabled = !state.saving) {
+                                    AppIcon(R.drawable.ic_settings, "连接设置")
+                                }
+                            }
+                        }
                     },
                 )
             },
@@ -217,6 +234,7 @@ private fun HomeworkContent(
                             state.aboutOpen -> AboutScreen(state.update, padding, checkUpdate, openLink)
                             showingSettings -> SettingsScreen(
                                 state, padding, chooseFolder, save, editUrl, editToken, health, cancel,
+                                togglePrerelease, toggleProxy,
                             )
                             else -> HomeScreen(state, padding, refresh, openSettings, upload, cancel, resume)
                         }
@@ -400,6 +418,8 @@ private fun SettingsScreen(
     editToken: (String) -> Unit,
     health: (String, String) -> Unit,
     cancel: () -> Unit,
+    togglePrerelease: (Boolean) -> Unit,
+    toggleProxy: (Boolean) -> Unit,
 ) {
     val draft = state.draft ?: state.settings
     val focus = LocalFocusManager.current
@@ -414,58 +434,246 @@ private fun SettingsScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        item {
-            Text("连接你的工作台", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
-            Text("先选择 PDF 文件夹，再填写 AstrBot 服务地址与访问令牌。令牌决定班级，保存前会验证连接；验证通过后才生效。", Modifier.padding(top = 8.dp))
-            Text("当前班级（已保存连接）：${state.className ?: if (state.verifyingClass) "正在验证…" else "未验证"}", Modifier.padding(top = 12.dp))
-            Text("草稿班级：${state.draftClassName ?: "未验证，请测试连接或保存"}", Modifier.padding(top = 8.dp),
-                style = MaterialTheme.typography.bodyMedium)
-        }
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("作业文件夹", style = MaterialTheme.typography.titleMedium)
-                    Text(if (draft.folder.isBlank()) "尚未选择" else "已获得文件夹读取权限", style = MaterialTheme.typography.bodyMedium)
-                    if (draft.folder.isNotBlank()) Text(Uri.decode(draft.folder.substringAfterLast('/')), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = { focus.clearFocus(); chooseFolder() }, enabled = !state.saving) {
-                        AppIcon(R.drawable.ic_folder, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (draft.folder.isBlank()) "选择作业文件夹" else "更换文件夹")
-                    }
-                }
-            }
-        }
-        item {
-            OutlinedTextField(
-                value = draft.baseUrl, onValueChange = editUrl, modifier = Modifier.fillMaxWidth(),
-                enabled = !state.saving, label = { Text("服务器地址") }, singleLine = true,
-                supportingText = { Text("使用 HTTPS；仅本机开发允许 HTTP localhost。") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+        item { SettingsHeader(state) }
+        item { FolderCard(draft, state, focus, chooseFolder) }
+        item { ConnectionCard(draft, state, focus, editUrl, editToken) }
+        // Preferences live above the save bar so toggles are reachable without scrolling
+        // past the action buttons; the request status stays pinned below the buttons.
+        item { UpdatePreferenceCard(state, togglePrerelease, toggleProxy) }
+        item { ActionButtons(draft, state, focus, health, save) }
+        item { RequestStatus(state, cancel) }
+    }
+}
+
+/** Update-check preferences: CI builds and the gh-proxy.com relay. */
+@Composable
+private fun UpdatePreferenceCard(
+    state: UiState,
+    onTogglePrerelease: (Boolean) -> Unit,
+    onToggleProxy: (Boolean) -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("更新偏好", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            SwitchRow(
+                title = "检查 CI 构建",
+                description = "包含预发布版本；适合想第一时间体验新功能的用户。",
+                checked = state.settings.checkPrerelease,
+                onCheckedChange = onTogglePrerelease,
+            )
+            SwitchRow(
+                title = "通过 GitHub 代理检查",
+                description = "使用 gh-proxy.com 加速更新检查；仅影响更新请求，不影响作业上传。",
+                checked = state.settings.useProxy,
+                onCheckedChange = onToggleProxy,
             )
         }
-        item {
+    }
+}
+
+/** One labelled Switch row; the whole row toggles, not just the thumb. */
+@Composable
+private fun SwitchRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 16.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = checked,
+            // The row handles the toggle so the whole label area is tappable.
+            onCheckedChange = null,
+        )
+    }
+}
+
+/** Page header with title and description. */
+@Composable
+private fun SettingsHeader(state: UiState) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "连接设置",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(
+            "配置 PDF 文件夹与 AstrBot 服务连接。保存前会验证连接，验证通过后才生效。",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (state.configured) {
+            Spacer(Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(50),
+                ) {
+                    Text(
+                        state.className ?: if (state.verifyingClass) "正在验证…" else "未验证",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+                Text(
+                    "已保存连接",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** PDF folder selection card. */
+@Composable
+private fun FolderCard(
+    draft: Settings,
+    state: UiState,
+    focus: androidx.compose.ui.focus.FocusManager,
+    chooseFolder: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_folder),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text("作业文件夹", style = MaterialTheme.typography.titleMedium)
+            }
+            Text(
+                if (draft.folder.isBlank()) "尚未选择" else "已获得文件夹读取权限",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (draft.folder.isNotBlank()) {
+                Text(
+                    Uri.decode(draft.folder.substringAfterLast('/')),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            OutlinedButton(
+                onClick = { focus.clearFocus(); chooseFolder() },
+                enabled = !state.saving,
+            ) {
+                AppIcon(R.drawable.ic_folder, null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (draft.folder.isBlank()) "选择作业文件夹" else "更换文件夹")
+            }
+        }
+    }
+}
+
+/** Server URL and token input fields. */
+@Composable
+private fun ConnectionCard(
+    draft: Settings,
+    state: UiState,
+    focus: androidx.compose.ui.focus.FocusManager,
+    editUrl: (String) -> Unit,
+    editToken: (String) -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(
+                "服务连接",
+                style = MaterialTheme.typography.titleMedium,
+            )
             OutlinedTextField(
-                value = draft.token, onValueChange = editToken, modifier = Modifier.fillMaxWidth(),
-                enabled = !state.saving, label = { Text("访问令牌") }, singleLine = true,
+                value = draft.baseUrl,
+                onValueChange = editUrl,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.saving,
+                label = { Text("服务器地址") },
+                singleLine = true,
+                supportingText = { Text("使用 HTTPS；仅本机开发允许 HTTP localhost。") },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Next,
+                    autoCorrectEnabled = false,
+                ),
+            )
+            OutlinedTextField(
+                value = draft.token,
+                onValueChange = editToken,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.saving,
+                label = { Text("访问令牌") },
+                singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done,
+                    autoCorrectEnabled = false,
+                ),
                 keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
             )
         }
-        item { RequestStatus(state, cancel) }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    onClick = { focus.clearFocus(); health(draft.baseUrl, draft.token) },
-                    enabled = !state.saving && state.busyFile == null && draft.baseUrl.isNotBlank() && draft.token.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth(),
-                ) { AppIcon(R.drawable.ic_check, null); Spacer(Modifier.width(8.dp)); Text("测试连接") }
-                Button(
-                    onClick = { focus.clearFocus(); save(draft) },
-                    enabled = !state.saving && state.busyFile == null && draft.folder.isNotBlank() && draft.baseUrl.isNotBlank() && draft.token.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (state.saving) "正在保存…" else "保存并进入首页") }
-            }
+    }
+}
+
+/** Test connection and save buttons. */
+@Composable
+private fun ActionButtons(
+    draft: Settings,
+    state: UiState,
+    focus: androidx.compose.ui.focus.FocusManager,
+    health: (String, String) -> Unit,
+    save: (Settings) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedButton(
+            onClick = { focus.clearFocus(); health(draft.baseUrl, draft.token) },
+            enabled = !state.saving && state.busyFile == null && draft.baseUrl.isNotBlank() && draft.token.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            AppIcon(R.drawable.ic_check, null)
+            Spacer(Modifier.width(8.dp))
+            Text("测试连接")
+        }
+        Button(
+            onClick = { focus.clearFocus(); save(draft) },
+            enabled = !state.saving && state.busyFile == null && draft.folder.isNotBlank() && draft.baseUrl.isNotBlank() && draft.token.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (state.saving) "正在保存…" else "保存并进入首页")
         }
     }
 }

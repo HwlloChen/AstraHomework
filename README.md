@@ -2,6 +2,8 @@
 
 班级白板作业助手：把白板 PDF 交给自建的 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 服务分析，由服务端识别作业页并推送总结到班级群。本仓库是 Android 客户端，服务端插件见 [astrbot_plugin_astrahomework](https://github.com/HwlloChen/astrbot_plugin_astrahomework)。
 
+**WARN: 这是一个几乎完全由AI编写的项目，代码质量堪忧，但功能经过完整测试**
+
 ## 功能
 
 - 选择一个本地 PDF 文件夹，自动列出其中的白板作业文件并标记新文件。

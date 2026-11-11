@@ -1,8 +1,11 @@
 package com.etaris.astrahomework
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,12 +21,14 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -31,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.heading
@@ -45,6 +52,9 @@ data class AboutUpdateState(
     val error: String? = null,
     val checkedVersion: String? = null,
 )
+
+/** True when this build carries the CI "-ci.N" version suffix. */
+private val isCiBuild get() = BuildConfig.VERSION_NAME.contains("-ci")
 
 /**
  * Project information and the GitHub update check.
@@ -75,103 +85,115 @@ fun AboutScreen(
             top = insets.calculateTopPadding() + 24.dp,
             bottom = insets.calculateBottomPadding() + 32.dp,
         ),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        item { AboutHero() }
+        item { VersionCard() }
+        item { UpdateCard(update, onCheck, onOpen) }
+        item { ProjectInfoCard(repository, onOpen) }
+        item { PrivacyCard() }
+        item { Footer() }
+    }
+}
+
+/** Brand identity: icon, name, and a one-line purpose. */
+@Composable
+private fun AboutHero() {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = MaterialTheme.shapes.large,
-                    modifier = Modifier.size(64.dp),
-                ) {
-                    Icon(
-                        painterResource(R.drawable.ic_pdf),
-                        contentDescription = null,
-                        modifier = Modifier.padding(16.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                }
-                Column {
-                    Text(
-                        "AstraHomework",
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier.semantics { heading() },
-                    )
-                    Text(
-                        "班级白板作业助手",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = RoundedCornerShape(28.dp),
+            modifier = Modifier.size(96.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painterResource(R.drawable.ic_pdf),
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
             }
         }
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("版本", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "当前版本 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        "把白板 PDF 上传到自建的 AstrBot 服务，由服务端识别作业并推送总结。应用只保存服务器地址、访问令牌和文件夹权限。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-        item {
-            UpdateCard(update, onCheck, onOpen)
-        }
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-                Column(Modifier.fillMaxWidth()) {
-                    Text(
-                        "项目信息",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 4.dp),
-                    )
-                    LinkRow("GitHub 仓库", "github.com/$repository") { onOpen("https://github.com/$repository") }
-                    HorizontalDivider(Modifier.padding(horizontal = 20.dp))
-                    LinkRow("问题反馈", "提交 Issue") { onOpen("https://github.com/$repository/issues") }
-                    HorizontalDivider(Modifier.padding(horizontal = 20.dp))
-                    LinkRow("配套插件", "AstrBot 插件仓库") {
-                        onOpen("https://github.com/$repository#服务端插件")
-                    }
-                    Text(
-                        "本应用与服务端均不收集个人数据；令牌仅保存在本机，用于访问你配置的服务器。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(20.dp),
-                    )
-                }
-            }
-        }
-        item {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                "Made with Jetpack Compose · Material 3 Expressive",
-                style = MaterialTheme.typography.bodySmall,
+                "AstraHomework",
+                style = MaterialTheme.typography.headlineLarge,
+                modifier = Modifier.semantics { heading() },
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "班级白板作业助手",
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
 
-/** One tappable row in the project-information card. */
+/** Current version with a badge distinguishing CI builds from stable releases. */
 @Composable
-private fun LinkRow(title: String, detail: String, onClick: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(title) },
-        supportingContent = { Text(detail, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        trailingContent = {
-            TextButton(onClick = onClick) { Text("打开") }
-        },
+private fun VersionCard() {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
-    )
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column {
+                Text(
+                    "当前版本",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+            if (isCiBuild) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    shape = RoundedCornerShape(50),
+                ) {
+                    Text(
+                        "CI 构建",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+            } else {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = RoundedCornerShape(50),
+                ) {
+                    Text(
+                        "稳定版",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+            }
+        }
+    }
 }
 
-/** Update state, its action, and the release notes when a newer version exists. */
+/**
+ * Update check: status row on the left, action button on the right.
+ *
+ * The compact status line keeps the card from jumping as results arrive, and the
+ * whole layout only expands when there is actually a release to show.
+ */
 @Composable
 private fun UpdateCard(update: AboutUpdateState, onCheck: () -> Unit, onOpen: (String) -> Unit) {
     val release = update.release
@@ -180,43 +202,231 @@ private fun UpdateCard(update: AboutUpdateState, onCheck: () -> Unit, onOpen: (S
             containerColor = if (release != null) MaterialTheme.colorScheme.tertiaryContainer
             else MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
+        shape = MaterialTheme.shapes.large,
     ) {
         Column(
             Modifier.fillMaxWidth().animateContentSize(animationSpec = spring()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("检查更新", style = MaterialTheme.typography.titleMedium)
-            when {
-                update.checking -> Text("正在查询 GitHub 最新版本…")
-                release != null -> {
-                    Text(
-                        "发现新版本 ${release.displayVersion}",
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.semantics { heading() },
-                    )
-                    if (release.notes.isNotBlank()) {
+            // Header: title + inline status on one side, the action on the other.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("检查更新", style = MaterialTheme.typography.titleMedium)
+                    UpdateStatusLine(update, release)
+                }
+                CheckButton(update = update, hasRelease = release != null, onCheck = onCheck)
+            }
+            // Expanded body only when a newer release exists.
+            AnimatedVisibility(visible = release != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val info = release
+                    if (info != null) {
+                        HorizontalRule()
                         Text(
-                            release.notes,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 8,
-                            overflow = TextOverflow.Ellipsis,
+                            "新版本 ${info.displayVersion}",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.semantics { heading() },
                         )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (release.apkUrl != null) {
-                            Button(onClick = { onOpen(release.apkUrl) }) { Text("下载安装包") }
+                        if (info.notes.isNotBlank()) {
+                            Text(
+                                info.notes,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 8,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
-                        OutlinedButton(onClick = { onOpen(release.pageUrl) }) { Text("查看发布页") }
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (info.apkUrl != null) {
+                                Button(onClick = { onOpen(info.apkUrl) }) { Text("下载安装包") }
+                            }
+                            OutlinedButton(onClick = { onOpen(info.pageUrl) }) { Text("查看发布页") }
+                        }
                     }
                 }
-                update.error != null -> Text(update.error)
-                update.checkedVersion != null -> Text("已是最新版本")
-                else -> Text("从 GitHub Releases 获取最新版本与更新说明。")
-            }
-            if (!update.checking) {
-                Spacer(Modifier.width(0.dp))
-                TextButton(onClick = onCheck) { Text(if (release != null) "重新检查" else "立即检查") }
             }
         }
+    }
+}
+
+/** Compact one-line status under the card title. */
+@Composable
+private fun UpdateStatusLine(update: AboutUpdateState, release: ReleaseInfo?) {
+    val text = when {
+        update.checking -> "正在查询 GitHub…"
+        release != null -> "发现新版本"
+        update.error != null -> update.error
+        update.checkedVersion != null -> "已是最新版本"
+        else -> "从 GitHub Releases 获取更新"
+    }
+    val color = when {
+        update.checking -> MaterialTheme.colorScheme.onSurfaceVariant
+        release != null -> MaterialTheme.colorScheme.onTertiaryContainer
+        update.error != null -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(text, style = MaterialTheme.typography.bodySmall, color = color)
+}
+
+/** Compact circular action button while checking, tonal otherwise. */
+@Composable
+private fun CheckButton(update: AboutUpdateState, hasRelease: Boolean, onCheck: () -> Unit) {
+    if (update.checking) {
+        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+    } else {
+        FilledTonalButton(onClick = onCheck) {
+            Text(if (hasRelease) "重新检查" else "立即检查")
+        }
+    }
+}
+
+/** Thin separator that inherits the local content color. */
+@Composable
+private fun HorizontalRule() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant),
+    )
+}
+
+/** GitHub repository, issue tracker, and plugin links. */
+@Composable
+private fun ProjectInfoCard(repository: String, onOpen: (String) -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Text(
+                "项目信息",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 4.dp),
+            )
+            LinkRow(
+                icon = R.drawable.ic_code,
+                title = "GitHub 仓库",
+                detail = "github.com/$repository",
+                onClick = { onOpen("https://github.com/$repository") },
+            )
+            LinkRow(
+                icon = R.drawable.ic_bug,
+                title = "问题反馈",
+                detail = "提交 Issue",
+                onClick = { onOpen("https://github.com/$repository/issues") },
+            )
+            LinkRow(
+                icon = R.drawable.ic_link,
+                title = "配套插件",
+                detail = "AstrBot 插件仓库",
+                onClick = { onOpen("https://github.com/$repository#服务端插件") },
+            )
+        }
+    }
+}
+
+/** Privacy statement. */
+@Composable
+private fun PrivacyCard() {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = CircleShape,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painterResource(R.drawable.ic_privacy),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+            Text(
+                "本应用与服务端均不收集个人数据；令牌仅保存在本机，用于访问你配置的服务器。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/** One tappable row in the project-information card. */
+@Composable
+private fun LinkRow(
+    icon: Int,
+    title: String,
+    detail: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Icon(
+                painterResource(icon),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                painterResource(R.drawable.ic_link),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Bottom attribution. */
+@Composable
+private fun Footer() {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            "Made with Jetpack Compose",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "Material 3 Expressive",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

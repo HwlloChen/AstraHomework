@@ -15,8 +15,12 @@ android {
         applicationId = "com.etaris.astrahomework"
         minSdk = 28
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        // CI passes -Pci.buildNumber=N so debug builds report "1.3-ci.N"; local
+        // builds stay "1.3" and the in-app comparison treats them as the stable line.
+        val baseVersion = "1.3"
+        val ciBuild = providers.gradleProperty("ci.buildNumber").orNull
+        versionName = if (ciBuild != null) "$baseVersion-ci.$ciBuild" else baseVersion
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -55,9 +59,9 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("debug")
             // No signing config means AGP emits app-release-unsigned.apk, which is
             // exactly what CI builds and what must never be published as a release.
-            signingConfig = signingConfigs.findByName("release")
             isDebuggable = false
             optimization {
                 enable = true

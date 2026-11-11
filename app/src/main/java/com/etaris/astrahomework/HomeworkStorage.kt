@@ -19,8 +19,16 @@ private val urlKey = stringPreferencesKey("url")
 private val tokenKey = stringPreferencesKey("token")
 private val seenKey = stringPreferencesKey("seen")
 private val discoveryKey = stringPreferencesKey("first_discovery_json")
+private val checkPrereleaseKey = stringPreferencesKey("check_prerelease")
+private val useProxyKey = stringPreferencesKey("use_proxy")
 
-data class Settings(val folder: String = "", val baseUrl: String = DEFAULT_URL, val token: String = "") {
+data class Settings(
+    val folder: String = "",
+    val baseUrl: String = DEFAULT_URL,
+    val token: String = "",
+    val checkPrerelease: Boolean = false,
+    val useProxy: Boolean = false,
+) {
     override fun toString() = "Settings(credentials=redacted)"
 }
 data class HomeworkFile(
@@ -38,6 +46,8 @@ class HomeworkStorage(context: Context) {
             preferences[folderKey].orEmpty(),
             preferences[urlKey] ?: DEFAULT_URL,
             preferences[tokenKey].orEmpty(),
+            preferences[checkPrereleaseKey]?.toBooleanStrictOrNull() ?: false,
+            preferences[useProxyKey]?.toBooleanStrictOrNull() ?: false,
         )
     }
 
@@ -46,6 +56,18 @@ class HomeworkStorage(context: Context) {
             preferences[folderKey] = settings.folder
             preferences[urlKey] = settings.baseUrl.trim().trimEnd('/')
             preferences[tokenKey] = settings.token.trim()
+            // Update preferences are persisted as well, so the settings flow always
+            // carries the latest toggles and a connection save can never erase them.
+            preferences[checkPrereleaseKey] = settings.checkPrerelease.toString()
+            preferences[useProxyKey] = settings.useProxy.toString()
+        }
+    }
+
+    /** Persists only the update-check preferences; credentials are untouched. */
+    suspend fun saveUpdatePreferences(checkPrerelease: Boolean, useProxy: Boolean) {
+        store.edit { preferences ->
+            preferences[checkPrereleaseKey] = checkPrerelease.toString()
+            preferences[useProxyKey] = useProxy.toString()
         }
     }
 

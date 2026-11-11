@@ -34,4 +34,20 @@ class VersionCompareTest {
         assertFalse(isNewerVersion("1.2", ""))
         assertFalse(isNewerVersion("", "0"))
     }
+
+    @Test fun ciBuildsAreOrderedByBuildNumber() {
+        // A CI build is newer than the plain version and than older CI builds.
+        assertTrue(isNewerVersion("1.2", "v1.2-ci.43", ciAware = true))
+        assertTrue(isNewerVersion("1.2-ci.42", "v1.2-ci.43", ciAware = true))
+        assertTrue(isNewerVersion("1.2-ci.43", "v1.3", ciAware = true))
+        assertFalse(isNewerVersion("1.2-ci.43", "v1.2-ci.43", ciAware = true))
+        assertFalse(isNewerVersion("1.2-ci.43", "v1.2-ci.42", ciAware = true))
+    }
+
+    @Test fun stableReleaseStillOutranksSameNumberCi() {
+        // Upgrading from a CI build back to the same-number stable is not an update.
+        assertFalse(isNewerVersion("1.2-ci.43", "v1.2", ciAware = true))
+        // Stable mode ignores CI tags entirely (numeric parts are equal).
+        assertFalse(isNewerVersion("1.2", "v1.2-ci.43"))
+    }
 }
