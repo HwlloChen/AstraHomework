@@ -1,0 +1,15 @@
+*.iml
+.gradle
+.kotlin
+# IDE state is machine-specific; only shared code style/build settings belong in VCS.
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+# Contains the local SDK path and optional local-only default server URL.
+/local.properties
+local.properties
+# The AstrBot runtime checkout and the companion plugin live in their own repositories.
+/AstrBot
