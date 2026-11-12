@@ -31,7 +31,8 @@ jobs:
 
       - name: Read app version
         id: version
-        run: echo "name=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+        # baseVersion is the single literal the build script derives versionName from.
+        run: echo "name=$(grep -oP 'val baseVersion\s*=\s*"\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
       # Fails fast instead of publishing an unsigned artifact under a release tag.
       - name: Validate signing secrets
