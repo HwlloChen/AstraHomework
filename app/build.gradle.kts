@@ -58,14 +58,20 @@ android {
     }
 
     buildTypes {
+        debug {
+            // CI publishes the debug variant as the testable pre-release; it must
+            // stay signature-compatible with the stable release so users can move
+            // between channels in place. Local dev without secrets keeps the
+            // default debug key via the same conditional lookup.
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
+        }
         release {
             // The release workflow configures a real "release" signing config from
             // secrets; anywhere else (local and CI without secrets) the debug key
             // keeps the artifact installable for side-load testing.
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")
-            // No signing config means AGP emits app-release-unsigned.apk, which is
-            // exactly what CI builds and what must never be published as a release.
             isDebuggable = false
             optimization {
                 enable = true
