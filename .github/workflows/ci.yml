@@ -41,10 +41,19 @@ jobs:
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
-      # Release builds are debug-signed (no signing key in CI); the debug build
-      # number is embedded so the app can distinguish which CI it runs.
+      # The release signing key is applied to BOTH variants so stable and CI
+      # builds are signature-compatible and can replace each other in place.
+      # The CI build number is embedded so the app can distinguish which CI it runs.
       - name: Assemble debug and release
-        run: ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace -Pci.buildNumber=${{ github.run_number }}
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          printf '%s' "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "$KEYSTORE_FILE"
+          ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace -Pci.buildNumber=${{ github.run_number }}
+          rm -f "$KEYSTORE_FILE"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -56,6 +65,8 @@ jobs:
 
       # CI publishes a pre-release so the app can offer in-app CI updates.
       # The tag embeds the build number so every CI build is newer than the last.
+      # The release-signed debug APK ships because in-app updates must be
+      # signature-compatible with the stable release to install in place.
       - name: Publish CI pre-release
         uses: softprops/action-gh-release@v2
         with:
@@ -67,13 +78,13 @@ jobs:
           body: |
             CI 构建 #${{ github.run_number }}（commit ${{ github.sha }}）
 
-            这是自动构建的调试版本，仅供测试，不建议日常使用。
+            这是自动构建的测试版本（正式签名，可直接覆盖安装稳定版）。
 
-      # Release builds are debug-signed, so AGP emits a signed app-release.apk.
+      # Both variants now carry the upload signature.
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: AstraHomework-${{ steps.version.outputs.name }}-release-debug-signed
+          name: AstraHomework-${{ steps.version.outputs.name }}-release
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
@@ -96,6 +107,6 @@ jobs:
             echo
             echo "| Variant | File | Signature |"
             echo "| --- | --- | --- |"
-            echo "| debug | app-debug.apk | debug key |"
-            echo "| release | app-release.apk | debug key (signing for publishing happens in the release workflow) |"
+            echo "| debug | app-debug.apk | upload key |"
+            echo "| release | app-release.apk | upload key (same as published releases) |"
           } >> "$GITHUB_STEP_SUMMARY"
