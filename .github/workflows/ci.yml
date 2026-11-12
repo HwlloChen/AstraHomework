@@ -32,7 +32,8 @@ jobs:
 
       - name: Read app version
         id: version
-        run: echo "name=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+        # baseVersion is the single literal the build script derives versionName from.
+        run: echo "name=$(grep -oP 'val baseVersion\s*=\s*"\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
       - name: Check formatting-sensitive sources
         run: ./gradlew :app:lintDebug --stacktrace
@@ -40,9 +41,8 @@ jobs:
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
-      # CI never holds a signing key: release here is the standard unsigned
-      # artifact, kept as a build-verification sideload for testers.
-      # The CI build number is embedded so the app can distinguish which CI it runs.
+      # Release builds are debug-signed (no signing key in CI); the debug build
+      # number is embedded so the app can distinguish which CI it runs.
       - name: Assemble debug and release
         run: ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace -Pci.buildNumber=${{ github.run_number }}
 
@@ -69,11 +69,12 @@ jobs:
 
             这是自动构建的调试版本，仅供测试，不建议日常使用。
 
-      - name: Upload unsigned release APK
+      # Release builds are debug-signed, so AGP emits a signed app-release.apk.
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: AstraHomework-${{ steps.version.outputs.name }}-release-unsigned
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          name: AstraHomework-${{ steps.version.outputs.name }}-release-debug-signed
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -96,5 +97,5 @@ jobs:
             echo "| Variant | File | Signature |"
             echo "| --- | --- | --- |"
             echo "| debug | app-debug.apk | debug key |"
-            echo "| release | app-release-unsigned.apk | **none** (signing happens in the release workflow) |"
+            echo "| release | app-release.apk | debug key (signing for publishing happens in the release workflow) |"
           } >> "$GITHUB_STEP_SUMMARY"
